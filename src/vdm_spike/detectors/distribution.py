@@ -115,7 +115,7 @@ def norm_ks(baseline: np.ndarray, current: np.ndarray,
     stat, p = ks_2samp(nb, nc)
     return DetectorResult(
         name="norm_ks", statistic=float(stat), p_value=float(p),
-        fired=p < alpha, detail={},
+        fired=bool(p < alpha), detail={},
     )
 
 
