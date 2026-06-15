@@ -65,12 +65,14 @@ def power_note(n: int, target_effect: float = 0.2) -> str:
 
 
 def main() -> int:
+    import os
+
     import psycopg
     from pgvector.psycopg import register_vector
 
     from vdm_spike.scenarios import SCENARIO_NAMES, build_scenario
 
-    dsn = "postgresql://vdm:vdm@localhost:5432/vdm"
+    dsn = os.environ.get("VDM_DSN", "postgresql://vdm:vdm@localhost:5432/vdm")
     overall_ok = True
     with psycopg.connect(dsn) as conn:
         conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
