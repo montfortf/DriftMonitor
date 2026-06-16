@@ -12,6 +12,7 @@ dependencies = [
     "pgvector>=0.2.5",
     "matplotlib>=3.8",
     "evidently>=0.4.25",
+    "qdrant-client>=1.18.0",
 ]
 
 [dependency-groups]
