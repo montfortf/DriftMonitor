@@ -1,7 +1,8 @@
 import numpy as np
 
+from vdm_spike.adapters.pgvector import PgVectorAdapter
 from vdm_spike.core import Snapshot
-from vdm_spike.store import PgVectorStore
+from vdm_spike.negotiation import DriftPlan, select_drift_plan
 
 
 def test_pgvector_extension_available(conn):
@@ -20,7 +21,7 @@ def _snapshot(seed: int, n: int) -> Snapshot:
 
 
 def test_load_count_sample_roundtrip(conn):
-    store = PgVectorStore(conn, dim=384)
+    store = PgVectorAdapter(conn, dim=384)
     store.ensure_schema()
     snap = _snapshot(seed=0, n=200)
     store.load(snap, namespace="baseline")
@@ -32,7 +33,7 @@ def test_load_count_sample_roundtrip(conn):
 
 
 def test_query_returns_ranked_hits(conn):
-    store = PgVectorStore(conn, dim=384)
+    store = PgVectorAdapter(conn, dim=384)
     store.ensure_schema()
     snap = _snapshot(seed=1, n=100)
     store.load(snap, namespace="current")
@@ -43,3 +44,23 @@ def test_query_returns_ranked_hits(conn):
     scores = [h.score for h in hits]
     assert scores == sorted(scores, reverse=True)  # cosine similarity descending
     assert hits[0].id == "x0"  # a vector is its own nearest neighbor
+
+
+
+def test_pgvector_capabilities_select_full(conn):
+    store = PgVectorAdapter(conn, dim=384)
+    caps = store.capabilities()
+    assert caps.returns_vectors and caps.unbiased_sample and caps.live_query
+    assert select_drift_plan(caps) is DriftPlan.FULL
+
+
+def test_pgvector_fetch_by_ids_roundtrip(conn):
+    store = PgVectorAdapter(conn, dim=384)
+    store.ensure_schema()
+    rng = np.random.default_rng(0)
+    snap = Snapshot(ids=[f"x{i}" for i in range(20)],
+                    vectors=rng.normal(size=(20, 384)).astype(np.float32))
+    store.load(snap, namespace="baseline")
+    got = store.fetch_by_ids(["x0", "x5", "x9"], namespace="baseline")
+    assert set(got.ids) == {"x0", "x5", "x9"}
+    assert got.vectors.shape == (3, 384)
