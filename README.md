@@ -63,3 +63,32 @@ DSN: `postgresql://vdm:vdm@localhost:5432/vdm` (override with `VDM_DSN`).
 - Every run prints a **power note** (minimum detectable effect / under-powered flag); a quiet result on an under-powered run is never a clean pass.
 - The embedding-space overlay is **fit-on-baseline / transform-current** through a frozen PCA basis (axis-comparable), per PRD §11.
 - `broken-writes` injects **zero-norm** vectors (pgvector rejects NaN/Inf at insert); NaN/Inf detection is unit-tested directly on the in-memory array.
+
+---
+
+# Phase 1.1 — Capability Negotiation (proven in Python)
+
+Spec: `../docs/superpowers/specs/2026-06-15-vdm-phase1.1-capability-negotiation-design.md`.
+
+## Verdict: ✅ capability negotiation works; the architecture is sound to port to Option A
+
+A single `VectorStoreAdapter` contract (`adapters/base.py`) plus a negotiator (`negotiation.py`) drives every store. The gate runs **4 adapters × 5 scenarios** and the negotiator picks the richest viable plan per store:
+
+| Adapter | SDK | Declared caps | Plan | Families run |
+|---|---|---|---|---|
+| pgvector | psycopg | returns+unbiased+query | **FULL** | distribution + retrieval + ops |
+| Qdrant (in-memory) | qdrant-client | returns+unbiased+query | **FULL** | distribution + retrieval + ops |
+| fake-query-only | — | query only | **QUERY** | retrieval + ops (distribution UNAVAILABLE, flagged) |
+| fake-minimal | — | none | **MINIMAL** | ops only (distribution + retrieval UNAVAILABLE, flagged) |
+
+Two independent SDKs (pgvector, Qdrant) reaching FULL proves the contract is genuinely store-agnostic, not pgvector-shaped. `run.py` prints an explicit **fidelity caveat** for every degraded plan, so a `PASS` on a MINIMAL store reads as "no detectable ops anomaly," never "no drift." The **conformance suite** (`conformance.py`) verifies each adapter's declared capabilities against actual behavior and is proven to have teeth — a deliberately-dishonest adapter is rejected.
+
+## Findings (carried forward)
+
+- **Finding A — RESOLVED.** Retrieval-RBO is now a properly-gated signal: scenarios model an **incrementally-evolving index** (null = identical corpus; benign = retained baseline + ~10% growth; harmful = retained + dominant injection / re-embed). RBO stays quiet on null/benign and fires on harmful — the Phase 0 demotion was an artifact of the old independent-resample scenarios.
+- **Finding B — deepened.** Norm-KS is **structurally uninformative for normalized embedding models**: sentence-transformers `all-*`/bge/gte models emit unit-norm vectors (L2-norm=1, std≈0), so a model swap shows no norm shift (KS p≈1.0). Norm-KS stays **informational, not gated**; the swap is robustly caught by MMD + classifier + retrieval. Norm-drift only helps for un-normalized embedding sources.
+- **Finding D (new) — scenario dilution & detector power.** A topic-shift that *retains 100% of baseline* and adds an equal volume of shifted docs is only ~50% drift, which sits exactly on the domain-classifier's 0.55 AUC fire-threshold — genuinely borderline (half of "current" is identical to baseline). The harmful scenario must represent a *dominant* shift (new topic ≈75% of the corpus, AUC ~0.62) to be unambiguous. Detector thresholds were never tuned; the scenario was made to represent real drift.
+- **Determinism.** The gate analyzes the **full loaded population** so it is reproducible (both adapters' `sample()` use random subsampling, which made borderline scenarios flaky). Bounded-sampling power remains a separate concern, covered by `power.py` (MDE).
+
+## What's deliberately still out of scope
+No TypeScript / control-plane port, no API server, no UI, no scheduler, no baseline persistence, no alerting, no real Pinecone/Vertex, no schema-drift family. Next slice (per PRD §12.5): port the proven contract to **Option A** (TS control plane + this Python compute).
