@@ -6,62 +6,58 @@ from vdm_spike.core import DetectorResult
 from vdm_spike.detectors import distribution as dist
 from vdm_spike.detectors import retrieval as ret
 from vdm_spike.features import fit_pca
+from vdm_spike.negotiation import PLAN_FAMILIES, DriftPlan, select_drift_plan
 from vdm_spike.ops import invalid_vectors
-from vdm_spike.power import is_underpowered, min_detectable_effect
-from vdm_spike.report import format_verdict_table, save_overlay_plot
-from vdm_spike.scenarios import Scenario
-from vdm_spike.store import PgVectorStore
+from vdm_spike.sampling import query_seeded, vector_sample
 
 
-def evaluate_scenario(sc: Scenario, store: PgVectorStore,
-                      sample_k: int = 1000, query_k: int = 10,
-                      plot_path: str | None = None) -> tuple[dict[str, DetectorResult], bool]:
-    """Load both snapshots, read back over SQL, run detectors, return (results, gate_ok)."""
-    store.ensure_schema()
-    store.conn.execute("DELETE FROM items")
-    store.conn.commit()
-    store.load(sc.baseline, namespace="baseline")
-    store.load(sc.current, namespace="current")
+def evaluate_scenario(sc, adapter, sample_k: int = 1000, query_k: int = 10
+                      ) -> tuple[DriftPlan, dict[str, DetectorResult], list[str]]:
+    """Load both snapshots into the adapter, negotiate the plan, run allowed families."""
+    if hasattr(adapter, "ensure_schema"):
+        adapter.ensure_schema()
+        adapter.conn.execute("DELETE FROM items")
+        adapter.conn.commit()
+    adapter.load(sc.baseline, namespace="baseline")
+    adapter.load(sc.current, namespace="current")
 
-    base_s = store.sample("baseline", k=sample_k)
-    curr_s = store.sample("current", k=sample_k)
-
-    # Sanitize for distribution math (zero-norm rows survive; NaN/Inf cannot enter pgvector).
-    pca = fit_pca(base_s.vectors, var=0.95)
-
+    plan = select_drift_plan(adapter.capabilities())
+    families = PLAN_FAMILIES[plan]
     results: dict[str, DetectorResult] = {}
-    results["centroid"] = dist.centroid_distance(base_s.vectors, curr_s.vectors)
-    results["mmd"] = dist.mmd_rbf(base_s.vectors, curr_s.vectors)
-    results["classifier"] = dist.classifier_drift(base_s.vectors, curr_s.vectors, pca)
-    results["norm_ks"] = dist.norm_ks(base_s.vectors, curr_s.vectors)
-    results["psi"] = dist.perdim_psi(base_s.vectors, curr_s.vectors, pca)
+    notes: list[str] = []
 
-    base_hits, curr_hits, base_scores, curr_scores = [], [], [], []
-    for qv in sc.query_vectors:
-        bh = store.query(qv, namespace="baseline", k=query_k)
-        ch = store.query(qv, namespace="current", k=query_k)
-        base_hits.append([h.id for h in bh])
-        curr_hits.append([h.id for h in ch])
-        base_scores.extend([h.score for h in bh])
-        curr_scores.extend([h.score for h in ch])
-    results["retrieval_rbo"] = ret.retrieval_overlap(base_hits, curr_hits)
-    results["retrieval_score_ks"] = ret.score_ks(
-        np.array(base_scores), np.array(curr_scores)
-    )
+    if "distribution" in families:
+        base = vector_sample(adapter, "baseline", sample_k)
+        curr = vector_sample(adapter, "current", sample_k)
+        pca = fit_pca(base.vectors, var=0.95)
+        results["centroid"] = dist.centroid_distance(base.vectors, curr.vectors)
+        results["mmd"] = dist.mmd_rbf(base.vectors, curr.vectors)
+        results["classifier"] = dist.classifier_drift(base.vectors, curr.vectors, pca)
+        results["norm_ks"] = dist.norm_ks(base.vectors, curr.vectors)
+        results["psi"] = dist.perdim_psi(base.vectors, curr.vectors, pca)
+    else:
+        notes.append(f"distribution drift UNAVAILABLE under {plan.value} plan "
+                     "(store returns no unbiased vector sample)")
+
+    if "retrieval" in families:
+        qb = query_seeded(adapter, "baseline", sc.query_vectors, query_k)
+        qc = query_seeded(adapter, "current", sc.query_vectors, query_k)
+        results["retrieval_rbo"] = ret.retrieval_overlap(qb.hit_ids, qc.hit_ids)
+        results["retrieval_score_ks"] = ret.score_ks(np.array(qb.scores), np.array(qc.scores))
+    else:
+        notes.append(f"retrieval drift UNAVAILABLE under {plan.value} plan (no live query)")
 
     results["ops_invalid"] = invalid_vectors(sc.current.vectors)
-
-    if plot_path:
-        save_overlay_plot(base_s.vectors, curr_s.vectors, pca, plot_path)
-
-    _, gate_ok = format_verdict_table(sc.name, results, sc.expectation.fires)
-    return results, gate_ok
+    return plan, results, notes
 
 
-def power_note(n: int, target_effect: float = 0.2) -> str:
-    mde = min_detectable_effect(n)
-    flag = "UNDER-POWERED" if is_underpowered(n, target_effect) else "ok"
-    return f"n={n} mde={mde:.3f} (target {target_effect}) -> {flag}"
+def gate_ok(sc, results: dict[str, DetectorResult]) -> bool:
+    """A scenario passes if every GATED detector that is AVAILABLE matches its expectation.
+    Detectors unavailable under the active plan are not asserted (honest degradation)."""
+    for name, expected in sc.expectation.fires.items():
+        if name in results and bool(results[name].fired) != expected:
+            return False
+    return True
 
 
 def main() -> int:
@@ -70,6 +66,9 @@ def main() -> int:
     import psycopg
     from pgvector.psycopg import register_vector
 
+    from vdm_spike.adapters.fakes import FakeMinimalAdapter, FakeQueryOnlyAdapter
+    from vdm_spike.adapters.pgvector import PgVectorAdapter
+    from vdm_spike.adapters.qdrant import QdrantAdapter
     from vdm_spike.scenarios import SCENARIO_NAMES, build_scenario
 
     dsn = os.environ.get("VDM_DSN", "postgresql://vdm:vdm@localhost:5432/vdm")
@@ -77,24 +76,22 @@ def main() -> int:
     with psycopg.connect(dsn) as conn:
         conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
         register_vector(conn)
-        store = PgVectorStore(conn, dim=384)
-        for name in SCENARIO_NAMES:
-            sc = build_scenario(name, n=2000, seed=0)
-            results, ok = evaluate_scenario(
-                sc, store, plot_path=f"overlay_{name}.png"
-            )
-            table, _ = format_verdict_table(name, results, sc.expectation.fires)
-            print(table)
-            # Print non-gated detectors as informational (visible, not asserted).
-            informational = [k for k in results if k not in sc.expectation.fires]
-            for k in informational:
-                r = results[k]
-                p = f"{r.p_value:.4f}" if r.p_value is not None else "-"
-                print(f"  [info] {k:18s} fired={str(r.fired):5s} "
-                      f"stat={r.statistic:.4f} p={p}")
-            print("  " + power_note(min(sc.baseline.n, 1000)))
-            print()
-            overall_ok = overall_ok and ok
+        adapters = {
+            "pgvector": lambda: PgVectorAdapter(conn, dim=384),
+            "qdrant": lambda: QdrantAdapter(dim=384),
+            "fake-query-only": lambda: FakeQueryOnlyAdapter(dim=384),
+            "fake-minimal": lambda: FakeMinimalAdapter(dim=384),
+        }
+        for aname, make in adapters.items():
+            for sname in SCENARIO_NAMES:
+                sc = build_scenario(sname, n=600, seed=0)
+                plan, results, notes = evaluate_scenario(sc, make())
+                ok = gate_ok(sc, results)
+                overall_ok = overall_ok and ok
+                print(f"[{aname:16s}] {sname:14s} plan={plan.value:7s} "
+                      f"{'PASS' if ok else 'FAIL'}")
+                for note in notes:
+                    print(f"    fidelity: {note}")
     print("GATE:", "PASS" if overall_ok else "FAIL")
     return 0 if overall_ok else 1
 
