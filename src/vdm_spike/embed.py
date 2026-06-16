@@ -6,8 +6,10 @@ from sentence_transformers import SentenceTransformer
 # Same output dimension (384) so a model swap is NOT trivially detectable by dim.
 MODEL_A = "sentence-transformers/all-MiniLM-L6-v2"
 MODEL_B = "sentence-transformers/all-MiniLM-L12-v2"
-# A different-family 384-dim model, for a model-swap whose L2-norm distribution
-# is distinguishable from MODEL_A (so norm_ks can fire). Verified by a test below.
+# A different-family 384-dim model used for the model-swap scenario. NOTE (Phase 1.1
+# Finding B): sentence-transformers models emit unit-norm vectors, so norm_ks CANNOT
+# distinguish a swap between two such models — it is informational, not gated. The swap
+# is robustly caught by mmd + classifier + retrieval_rbo instead.
 MODEL_NORM_DIVERGENT = "BAAI/bge-small-en-v1.5"
 
 _CACHE: dict[str, SentenceTransformer] = {}

@@ -61,8 +61,13 @@ def build_scenario(name: str, n: int = 2000, seed: int = 0) -> Scenario:
         fires = {"mmd": False, "classifier": False, "retrieval_rbo": False}
 
     elif name == "topic-shift":
-        # Retained docs + a large injection of off-topic docs that displaces top-k.
-        injected = make_docs(seed=seed + 3, n=n, topic_mix=SHIFTED_MIX, id_prefix="s")
+        # Retained docs + a DOMINANT injection of off-topic docs (3x the baseline).
+        # The new topic must dominate the corpus to be an unambiguous shift: at only
+        # ~50% contamination the domain-classifier sits on its 0.55 fire threshold
+        # (half of `current` is identical to baseline, so it is genuinely borderline).
+        # At ~75% shifted the classifier clears comfortably (AUC ~0.62). Detector
+        # thresholds are unchanged — this makes the scenario represent real drift.
+        injected = make_docs(seed=seed + 3, n=3 * n, topic_mix=SHIFTED_MIX, id_prefix="s")
         current = _concat(baseline, _snapshot(injected, emb_a))
         fires = {"mmd": True, "classifier": True, "retrieval_rbo": True}
 

@@ -85,7 +85,9 @@ def main() -> int:
         for aname, make in adapters.items():
             for sname in SCENARIO_NAMES:
                 sc = build_scenario(sname, n=600, seed=0)
-                plan, results, notes = evaluate_scenario(sc, make())
+                # sample_k above any namespace size → analyze full population,
+                # making the headline gate deterministic (see test_gate.py).
+                plan, results, notes = evaluate_scenario(sc, make(), sample_k=100_000)
                 ok = gate_ok(sc, results)
                 overall_ok = overall_ok and ok
                 print(f"[{aname:16s}] {sname:14s} plan={plan.value:7s} "
