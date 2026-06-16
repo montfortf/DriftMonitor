@@ -6,7 +6,7 @@ import numpy as np
 
 from vdm_spike.core import Expectation, Snapshot
 from vdm_spike.corpus import BALANCED_MIX, SHIFTED_MIX, make_docs
-from vdm_spike.embed import MODEL_A, MODEL_B, Embedder, inject_invalid
+from vdm_spike.embed import MODEL_A, MODEL_NORM_DIVERGENT, Embedder, inject_invalid
 
 SCENARIO_NAMES = [
     "null-control",
@@ -32,50 +32,48 @@ def _snapshot(docs, emb: Embedder) -> Snapshot:
                     metadata=[{"topic": d.topic} for d in docs])
 
 
+def _concat(a: Snapshot, b: Snapshot) -> Snapshot:
+    return Snapshot(
+        ids=a.ids + b.ids,
+        vectors=np.vstack([a.vectors, b.vectors]).astype(np.float32),
+        metadata=(a.metadata or []) + (b.metadata or []),
+    )
+
+
 def build_scenario(name: str, n: int = 2000, seed: int = 0) -> Scenario:
     emb_a = Embedder(MODEL_A)
     base_docs = make_docs(seed=seed, n=n, topic_mix=BALANCED_MIX)
     baseline = _snapshot(base_docs, emb_a)
-    # fixed query set: a held-out balanced sample embedded with the baseline model
-    query_docs = make_docs(seed=seed + 999, n=50, topic_mix=BALANCED_MIX,
-                           id_prefix="q")
+    query_docs = make_docs(seed=seed + 999, n=50, topic_mix=BALANCED_MIX, id_prefix="q")
     query_vectors = emb_a.encode([d.text for d in query_docs])
 
-    # Gating note (Phase 0 finding): only detectors that are scientifically valid
-    # FOR HOW THIS SCENARIO IS CONSTRUCTED are gated. Others are still computed and
-    # printed (informational) but not asserted. See README "Findings". This is a
-    # correction of expectations, NOT a tuning of detector thresholds.
-
     if name == "null-control":
-        cur_docs = make_docs(seed=seed + 1, n=n, topic_mix=BALANCED_MIX)
-        current = _snapshot(cur_docs, emb_a)
-        # retrieval_rbo NOT gated: `current` is an INDEPENDENT resample, so the
-        # specific documents a query returns legitimately differ even though the
-        # distribution is unchanged. RBO is only a valid no-change signal on an
-        # incrementally evolving index (shared doc identity) — see Finding A.
-        fires = {"mmd": False, "classifier": False}
+        # True no-op: the SAME corpus, re-presented unchanged. All families quiet.
+        current = Snapshot(ids=list(baseline.ids), vectors=baseline.vectors.copy(),
+                           metadata=baseline.metadata)
+        fires = {"mmd": False, "classifier": False, "retrieval_rbo": False}
 
     elif name == "benign-growth":
-        extra = make_docs(seed=seed + 2, n=n // 2, topic_mix=BALANCED_MIX,
+        # Incremental growth: baseline docs RETAINED + ~10% new same-distribution docs.
+        extra = make_docs(seed=seed + 2, n=max(1, n // 10), topic_mix=BALANCED_MIX,
                           id_prefix="g")
-        cur_docs = base_docs + extra
-        current = _snapshot(cur_docs, emb_a)
-        # retrieval_rbo NOT gated: large same-distribution growth genuinely
-        # reshuffles top-k. Per PRD §7.3, benign growth should be judged by
-        # rate-of-change, not an absolute RBO threshold — see Finding A.
-        fires = {"mmd": False, "classifier": False}
+        current = _concat(baseline, _snapshot(extra, emb_a))
+        fires = {"mmd": False, "classifier": False, "retrieval_rbo": False}
 
     elif name == "topic-shift":
-        cur_docs = make_docs(seed=seed + 3, n=n, topic_mix=SHIFTED_MIX)
-        current = _snapshot(cur_docs, emb_a)
+        # Retained docs + a large injection of off-topic docs that displaces top-k.
+        injected = make_docs(seed=seed + 3, n=n, topic_mix=SHIFTED_MIX, id_prefix="s")
+        current = _concat(baseline, _snapshot(injected, emb_a))
         fires = {"mmd": True, "classifier": True, "retrieval_rbo": True}
 
     elif name == "model-swap":
-        emb_b = Embedder(MODEL_B)
-        current = _snapshot(base_docs, emb_b)  # same docs/ids, different model
-        # norm_ks NOT gated: the two same-dim MiniLM models have near-identical
-        # L2-norm distributions, so norm-shift is a weak channel FOR THIS PAIR.
-        # The swap is robustly caught by mmd + classifier + retrieval — see Finding B.
+        # Same retained docs/ids, re-embedded with a norm-divergent model.
+        # NOTE (Finding B contingency): sentence-transformers models all include a
+        # Normalize module, producing unit-norm vectors (std=0). norm_ks cannot
+        # fire on this class of models. norm_ks remains informational, not gated.
+        # The swap is still robustly caught by mmd + classifier + retrieval_rbo.
+        emb_div = Embedder(MODEL_NORM_DIVERGENT)
+        current = _snapshot(base_docs, emb_div)
         fires = {"mmd": True, "classifier": True, "retrieval_rbo": True}
 
     elif name == "broken-writes":
