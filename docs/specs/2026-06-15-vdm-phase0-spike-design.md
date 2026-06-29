@@ -67,7 +67,7 @@ vdm-spike/
 - **`detectors/distribution.py`** — Centroid distance (cosine + Euclidean); MMD (RBF kernel, bandwidth via median heuristic **frozen on the baseline sample**, significance via permutation test, default 200 permutations); domain-classifier AUC (classifier on **PCA-reduced** features, k-fold cross-validated, with a permutation null → calibrated p-value); norm-distribution shift (KS on vector norms); per-dimension PSI on the **frozen PCA basis** with Benjamini–Hochberg correction + share-drifted.
 - **`detectors/retrieval.py`** — The headline family. A fixed query set run against baseline vs current index: top-k ID overlap (Jaccard + Rank-Biased Overlap), and score-distribution drift (KS on similarity scores).
 - **`power.py`** — For the achieved sample size `n` and dimensionality `d`, computes the minimum detectable effect at the configured power (default 0.8) and flags runs that are under-powered for the target effect.
-- **`report.py`** — Verdict table (per scenario × detector: fired? expected? ✓/✗) and a PCA overlay plot fitted on the baseline and `transform`-ing the current sample through the **frozen basis** (parent-spec §11) so the overlay is axis-comparable.
+- **`report.py`** — Verdict table (per scenario × detector: fired? expected? pass/fail) and a PCA overlay plot fitted on the baseline and `transform`-ing the current sample through the **frozen basis** (parent-spec §11) so the overlay is axis-comparable.
 - **`run.py`** — Orchestrates the full sweep and prints the pass/fail gate summary.
 
 ## 5. The scenario set (validation matrix)

@@ -1879,15 +1879,15 @@ git commit -m "test: cross-check MMD detector against Evidently"
 ## Self-Review
 
 **1. Spec coverage** (against [../specs/2026-06-15-vdm-phase0-spike-design.md](../specs/2026-06-15-vdm-phase0-spike-design.md)):
-- §3 success criteria → Task 16 gate test + run.py `GATE` line + `power_note` (statistical honesty). ✓
-- §4 modules: corpus(T4), embed(T5), store(T6), scenarios(T14), distribution(T7–10), retrieval(T11), power(T13), report(T15), run(T16). ✓ (`ops.py` added as T12 — it was implied by the `broken-writes` scenario and Family C; surfaced explicitly.)
-- §5 scenario set: all five built in T14, gated in T16. ✓
-- §6 tooling: uv/pytest/ruff (T1), Docker pgvector (T2), Evidently cross-check (T17). ✓
-- §7 testing approach: TDD throughout; MMD/classifier permutation, RBO drop, NaN/zero detection, under-powered flag all asserted. ✓
-- §8 out-of-scope: no adapter contract/UI/API/scheduler/alerting — confirmed none added. ✓
+- §3 success criteria → Task 16 gate test + run.py `GATE` line + `power_note` (statistical honesty).
+- §4 modules: corpus(T4), embed(T5), store(T6), scenarios(T14), distribution(T7–10), retrieval(T11), power(T13), report(T15), run(T16). (`ops.py` added as T12 — it was implied by the `broken-writes` scenario and Family C; surfaced explicitly.)
+- §5 scenario set: all five built in T14, gated in T16.
+- §6 tooling: uv/pytest/ruff (T1), Docker pgvector (T2), Evidently cross-check (T17).
+- §7 testing approach: TDD throughout; MMD/classifier permutation, RBO drop, NaN/zero detection, under-powered flag all asserted.
+- §8 out-of-scope: no adapter contract/UI/API/scheduler/alerting — confirmed none added.
 
-**2. Placeholder scan:** No TBD/TODO; every code step contains complete, runnable code. ✓
+**2. Placeholder scan:** No TBD/TODO; every code step contains complete, runnable code.
 
-**3. Type consistency:** `Snapshot`(ids, vectors, metadata, .n/.dim), `Expectation`(fires), `DetectorResult`(name, statistic, p_value, fired, detail), `QueryHit`(id, score, rank), `Scenario`(name, baseline, current, query_vectors, expectation) used consistently across T3, T6, T7–12, T14, T15, T16. Detector names (`centroid`, `mmd`, `classifier`, `norm_ks`, `psi`, `retrieval_rbo`, `retrieval_score_ks`, `ops_invalid`) match between `scenarios.py` expectations and `run.py` results keys. ✓
+**3. Type consistency:** `Snapshot`(ids, vectors, metadata, .n/.dim), `Expectation`(fires), `DetectorResult`(name, statistic, p_value, fired, detail), `QueryHit`(id, score, rank), `Scenario`(name, baseline, current, query_vectors, expectation) used consistently across T3, T6, T7–12, T14, T15, T16. Detector names (`centroid`, `mmd`, `classifier`, `norm_ks`, `psi`, `retrieval_rbo`, `retrieval_score_ks`, `ops_invalid`) match between `scenarios.py` expectations and `run.py` results keys.
 
 **Deviation noted:** Per-dim PSI uses the standard >0.2 threshold convention rather than BH-corrected per-dim KS (design §4.1 mentioned BH). This is an intentional Phase-0 simplification — the gate does not depend on per-dim localization — documented inline at Task 10. Not a coverage gap.

@@ -6,7 +6,7 @@ A pure-Python harness that answers one question with evidence, before any ecosys
 
 See the design spec: [docs/specs/2026-06-15-vdm-phase0-spike-design.md](docs/specs/2026-06-15-vdm-phase0-spike-design.md).
 
-## Verdict: ✅ the core drift signal is validated
+## Verdict: the core drift signal is validated
 
 The distribution detectors **cleanly separate harmful drift from benign change**, and every harmful scenario is caught. The headline numbers (production run, `n=2000`):
 
@@ -14,9 +14,9 @@ The distribution detectors **cleanly separate harmful drift from benign change**
 |---|---|---|---|---|---|
 | null-control (resample) | 0.71 — quiet | 0.49 — quiet | (informational) | — | correctly quiet |
 | benign-growth (+50%) | 0.96 — quiet | 0.47 — quiet | (informational) | — | correctly quiet |
-| topic-shift | **0.005 — fires** | **0.67 — fires** | **fires** | — | ✅ |
-| model-swap | **0.005 — fires** | **0.97 — fires** | **fires** | — | ✅ |
-| broken-writes | (informational) | (informational) | (informational) | **fires** | ✅ |
+| topic-shift | **0.005 — fires** | **0.67 — fires** | **fires** | — | caught |
+| model-swap | **0.005 — fires** | **0.97 — fires** | **fires** | — | caught |
+| broken-writes | (informational) | (informational) | (informational) | **fires** | caught |
 
 MMD and the domain-classifier are silent on sampling noise and loud on real drift — exactly the success criterion. The math is cross-validated against Evidently (`tests/test_evidently_crosscheck.py`): our MMD verdict agrees with Evidently's embedding-drift detector on both shift and no-shift.
 
@@ -70,7 +70,7 @@ DSN: `postgresql://vdm:vdm@localhost:5432/vdm` (override with `VDM_DSN`).
 
 Spec: [docs/specs/2026-06-15-vdm-phase1.1-capability-negotiation-design.md](docs/specs/2026-06-15-vdm-phase1.1-capability-negotiation-design.md).
 
-## Verdict: ✅ capability negotiation works; the architecture is sound to port to Option A
+## Verdict: capability negotiation works; the architecture is sound to port to Option A
 
 A single `VectorStoreAdapter` contract (`adapters/base.py`) plus a negotiator (`negotiation.py`) drives every store. The gate runs **4 adapters × 5 scenarios** and the negotiator picks the richest viable plan per store:
 
