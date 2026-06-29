@@ -4,7 +4,7 @@ A pure-Python harness that answers one question with evidence, before any ecosys
 
 > **Does the drift signal fire on harmful shifts and stay quiet on benign growth — legibly enough to trust?**
 
-See the design spec: `../docs/superpowers/specs/2026-06-15-vdm-phase0-spike-design.md`.
+See the design spec: [docs/specs/2026-06-15-vdm-phase0-spike-design.md](docs/specs/2026-06-15-vdm-phase0-spike-design.md).
 
 ## Verdict: ✅ the core drift signal is validated
 
@@ -68,7 +68,7 @@ DSN: `postgresql://vdm:vdm@localhost:5432/vdm` (override with `VDM_DSN`).
 
 # Phase 1.1 — Capability Negotiation (proven in Python)
 
-Spec: `../docs/superpowers/specs/2026-06-15-vdm-phase1.1-capability-negotiation-design.md`.
+Spec: [docs/specs/2026-06-15-vdm-phase1.1-capability-negotiation-design.md](docs/specs/2026-06-15-vdm-phase1.1-capability-negotiation-design.md).
 
 ## Verdict: ✅ capability negotiation works; the architecture is sound to port to Option A
 

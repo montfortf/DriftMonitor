@@ -1878,7 +1878,7 @@ git commit -m "test: cross-check MMD detector against Evidently"
 
 ## Self-Review
 
-**1. Spec coverage** (against `2026-06-15-vdm-phase0-spike-design.md`):
+**1. Spec coverage** (against [../specs/2026-06-15-vdm-phase0-spike-design.md](../specs/2026-06-15-vdm-phase0-spike-design.md)):
 - §3 success criteria → Task 16 gate test + run.py `GATE` line + `power_note` (statistical honesty). ✓
 - §4 modules: corpus(T4), embed(T5), store(T6), scenarios(T14), distribution(T7–10), retrieval(T11), power(T13), report(T15), run(T16). ✓ (`ops.py` added as T12 — it was implied by the `broken-writes` scenario and Family C; surfaced explicitly.)
 - §5 scenario set: all five built in T14, gated in T16. ✓

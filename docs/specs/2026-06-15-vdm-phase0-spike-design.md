@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-15
 **Status:** Approved (design); pending implementation plan
-**Parent spec:** `Vector_Drift_Monitor_Spec_v2.md` (Draft v0.2), §13.1 Phase 0
+**Parent spec:** [PRD-v0.2.md](../PRD-v0.2.md) (Draft v0.2), §13.1 Phase 0
 **Scope:** Single implementation increment — the de-risking spike that precedes Phase 1.
 
 ---
